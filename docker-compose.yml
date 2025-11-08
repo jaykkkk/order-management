@@ -1,6 +1,16 @@
 version: '3.9'
 
 services:
+  # REDIS (shared across all services)
+  redis:
+    image: redis:7.2
+    container_name: redis_cache
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
   # PRODUCT SERVICE DATABASE
   product-db:
     image: postgres:15
@@ -49,6 +59,17 @@ services:
     networks:
       - backend
 
+  # DISCOVERY SERVER (EUREKA)
+  discovery-server:
+    build:
+      context: ./discovery-server
+      dockerfile: Dockerfile
+    container_name: discovery_server
+    ports:
+      - "8761:8761"
+    networks:
+      - backend
+
   # PRODUCT SERVICE
   product-service:
     build:
@@ -62,8 +83,12 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://product-db:5432/product_db
       - SPRING_DATASOURCE_USERNAME=product_user
       - SPRING_DATASOURCE_PASSWORD=product_pass
+      - SPRING_REDIS_HOST=redis
+      - EUREKA_SERVER_URL=http://discovery-server:8761/eureka/
     depends_on:
       - product-db
+      - redis
+      - discovery-server
     networks:
       - backend
 
@@ -80,8 +105,12 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://customer-db:5432/customer_db
       - SPRING_DATASOURCE_USERNAME=customer_user
       - SPRING_DATASOURCE_PASSWORD=customer_pass
+      - SPRING_REDIS_HOST=redis
+      - EUREKA_SERVER_URL=http://discovery-server:8761/eureka/
     depends_on:
       - customer-db
+      - redis
+      - discovery-server
     networks:
       - backend
 
@@ -98,12 +127,30 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://order-db:5432/order_db
       - SPRING_DATASOURCE_USERNAME=order_user
       - SPRING_DATASOURCE_PASSWORD=order_pass
-      - PRODUCT_SERVICE_URL=http://product-service:8081
-      - CUSTOMER_SERVICE_URL=http://customer-service:8082
+      - SPRING_REDIS_HOST=redis
+      - EUREKA_SERVER_URL=http://discovery-server:8761/eureka/
     depends_on:
       - order-db
       - product-service
       - customer-service
+      - redis
+      - discovery-server
+    networks:
+      - backend
+
+  # API GATEWAY
+  gateway-service:
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    container_name: gateway_service
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_SERVER_URL=http://discovery-server:8761/eureka/
+    depends_on:
+      - discovery-server
     networks:
       - backend
 
